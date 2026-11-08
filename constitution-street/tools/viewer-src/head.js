@@ -6,6 +6,17 @@
   if (!M) return;
   const LV = M.levels, CX = M.W / 2, CZ = M.D / 2 + .6, V = M.lv;
   /* ---------------- geometry helpers ---------------- */
+  // planar UVs in metres (world space), so photo textures tile at their real size on any face
+  function addUV(g) {
+    const p = g.attributes.position.array, n = g.attributes.normal.array, uv = new Float32Array(p.length / 3 * 2);
+    for (let i = 0, j = 0; i < p.length; i += 3, j += 2) {
+      const ax = Math.abs(n[i]), ay = Math.abs(n[i + 1]), az = Math.abs(n[i + 2]);
+      if (ay >= ax && ay >= az) { uv[j] = p[i]; uv[j + 1] = p[i + 2]; }
+      else if (ax >= az) { uv[j] = p[i + 2]; uv[j + 1] = p[i + 1]; }
+      else { uv[j] = p[i]; uv[j + 1] = p[i + 1]; }
+    }
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  }
   function Boxes() { this.p = []; this.n = []; this.i = []; this.v = 0; }
   Boxes.prototype.add = function (x0, y0, z0, x1, y1, z1) {
     if (x1 < x0) [x0, x1] = [x1, x0]; if (y1 < y0) [y0, y1] = [y1, y0]; if (z1 < z0) [z0, z1] = [z1, z0];
@@ -30,6 +41,7 @@
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
+    addUV(g);
     g.setIndex(this.v > 65535 ? new THREE.Uint32BufferAttribute(this.i, 1) : new THREE.Uint16BufferAttribute(this.i, 1));
     const m = new THREE.Mesh(g, mat); m.castShadow = false; m.receiveShadow = false; return m;
   };
@@ -70,6 +82,18 @@
       shrub: std('#5f7a52'), shrub2: std('#6d8a5c'), stoneL: std('#9fa09f'), stoneR: std('#a8a7a3'), shop: std('#2d3d4a'), nbWin: std('#3f474f', { roughness: .3 }),
       bulb: new THREE.MeshBasicMaterial({ color: 0xffd9a0 })
     };
+    // finishes taken from the site photos (September 2026): textures cut from the photos, tiled at real size
+    const T = (f, sx, sy, o) => { const mt = std('#ffffff', o); mt.map = photoTex(f, sx, sy, () => { mt.needsUpdate = true; }); return mt; };
+    m.terrazzo = T('tex-terrazzo.jpg', .42, .42, { roughness: .35 });
+    m.patTile = T('tex-tile.jpg', .42, 1.05, { roughness: .4 });
+    m.carpet = T('tex-carpet.jpg', .9, .45, { roughness: 1 });
+    m.oak = T('tex-oak.jpg', 1.1, .28, { roughness: .6 });
+    m.mattress = T('tex-mattress.jpg', .7, .35, { roughness: .95 });
+    m.wetFloor = std('#ffffff', { roughness: .7 }); m.wetFloor.map = plankTex();
+    m.charcoal = std('#3a3d40', { roughness: .6 }); m.pine = std('#d9b98a', { roughness: .7 });
+    m.gloss = std('#f6f6f4', { roughness: .12 }); m.slatDark = std('#4a3a2c', { roughness: .7 });
+    m.mirror = std('#dfe6ea', { roughness: .05, emissive: '#9fb0b8', emissiveIntensity: .45 });
+    m.led = new THREE.MeshBasicMaterial({ color: 0xfff6e2 }); m.blueGlow = new THREE.MeshBasicMaterial({ color: 0x3a6cff });
     m.renderDS = std('#a3a5a6', { side: THREE.DoubleSide });
     m.slate.side = THREE.DoubleSide; m.granite.side = THREE.DoubleSide; m.rubble.side = THREE.DoubleSide;
     return m;
@@ -79,6 +103,21 @@
   function canvasTex(w, h, draw) {
     const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
     const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; return t;
+  }
+  let TEXBASE = 'img/';
+  function photoTex(file, sx, sy, done) {
+    const t = new THREE.TextureLoader().load(TEXBASE + file, done);
+    t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1 / sx, 1 / sy); t.anisotropy = 8; return t;
+  }
+  function plankTex() {   // dark rustic wood-effect planks, as laid in the shower rooms
+    const t = canvasTex(512, 512, (g, w, h) => {
+      const cols = ['#4b3d31', '#57473a', '#3f342b', '#5e4c3c', '#4f4034', '#463a30'];
+      for (let r = 0; r < 4; r++) { let x = -((r * 173) % 400); while (x < w) { const L = 300 + ((x * 7 + r * 31) % 160); g.fillStyle = cols[(r * 5 + Math.abs(x)) % 6]; g.fillRect(x, r * 128, L, 128);
+        for (let k = 0; k < 40; k++) { g.fillStyle = `rgba(${k % 3 ? '20,14,10' : '150,130,110'},${.06 + (k % 5) * .02})`; g.fillRect(x + (k * 37) % L, r * 128 + (k * 29) % 128, 20 + (k * 13) % 90, 1 + (k % 3)); }
+        g.fillStyle = 'rgba(15,10,8,.6)'; g.fillRect(x, r * 128, 2, 128); x += L; }
+        g.fillStyle = 'rgba(15,10,8,.6)'; g.fillRect(0, r * 128, w, 2); }
+    });
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1 / 1.6, 1 / .8); return t;
   }
   function signTex(text) {
     return canvasTex(1024, 76, (g, w, h) => {

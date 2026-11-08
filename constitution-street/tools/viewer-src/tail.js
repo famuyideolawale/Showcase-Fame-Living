@@ -13,6 +13,7 @@
     const sc = this.scene = new THREE.Scene();
     sc.background = new THREE.Color(opts.bg || '#e9e5ec');
     this.cam = new THREE.PerspectiveCamera(this.mode === 'tour' ? 76 : 40, W0 / H0, .05, 600);
+    if (opts.texBase) TEXBASE = opts.texBase;
     this.mats = makeMats();
     sc.add(this.hemi = new THREE.HemisphereLight(0xf6f2ea, 0x6d655a, this.mode === 'tour' ? .72 : .85));
     const sun = this.sun = new THREE.DirectionalLight(0xfff4e2, .62); sun.position.set(-30, 60, -40); sc.add(sun); sc.add(sun.target);
@@ -148,6 +149,19 @@
       this.yaw = this.bestYaw(sx, sz); this.cam.position.copy(this.pos3);
       this.fadeEl = document.createElement('div'); this.fadeEl.className = 'v3-fade'; host.appendChild(this.fadeEl);
     }
+    // real photos of the finished rooms, pinned where they were taken: tap to open the photo
+    const ph = (o.photos || []).filter(p => p.flat === pos);
+    if (ph.length) {
+      if (!this.anchors) this.anchors = [];
+      ph.forEach(p => {
+        const a = { p: new THREE.Vector3(p.x - CX, y + (this.mode === 'tour' ? 1.35 : 1.7), p.z - CZ), t: p.label, k: 'photo' };
+        const d = document.createElement('button'); d.type = 'button'; d.className = 'v3-tag v3-photo';
+        d.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5h3l1.5-2h3L11 5h3v8H2z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="9" r="2.3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>' + p.label;
+        d.setAttribute('aria-label', 'Open the real photo: ' + p.label);
+        d.addEventListener('pointerdown', e => e.stopPropagation()); d.addEventListener('click', e => { e.stopPropagation(); if (o.onPhoto) o.onPhoto(p.i); });
+        this.labels.appendChild(d); a.el = d; this.anchors.unshift(a);
+      });
+    }
   };
   /* walk-through collision: walls, glazing and furniture rasterised to 5 cm cells */
   Viewer.prototype.buildGrid = function (L, pos) {
@@ -159,7 +173,7 @@
     lv.open.forEach(o => poly(gw, o.q));
     (lv.diag || []).forEach(([a, c]) => { gw.lineWidth = .12; gw.beginPath(); gw.moveTo(a[0], a[1]); gw.lineTo(c[0], c[1]); gw.stroke(); });
     const R = r => gf.fillRect(r[0], r[1], r[2] - r[0], r[3] - r[1]);
-    lv.furn.filter(f => f.flat === pos).forEach(f => { const k = f.t === 'dining' ? .5 : 1; R([f.x - f.w / 2 * k, f.z - f.d / 2 * k, f.x + f.w / 2 * k, f.z + f.d / 2 * k]); });
+    lv.furn.filter(f => f.flat === pos && f.t !== 'bedside').forEach(f => { const k = f.t === 'dining' ? .5 : 1; R([f.x - f.w / 2 * k, f.z - f.d / 2 * k, f.x + f.w / 2 * k, f.z + f.d / 2 * k]); });
     lv.fix.filter(f => f.t !== 'sink').forEach(f => R(f.b)); lv.kit.filter(k => k.flat === pos).forEach(k => R(k.b));
     lv.tall.forEach(R);
     // walkable area: this flat's floor (plus its bays)
@@ -212,6 +226,31 @@
   };
   Viewer.prototype.goRoom = function (i) {
     const r = this.rooms[i]; if (!r) return;
+    // a room with a real photo: stand back and look at what the photo shows
+    const near = p => this.rooms.reduce((a, q) => Math.hypot(q.x - p.x, q.z - p.z) < Math.hypot(a.x - p.x, a.z - p.z) ? q : a, this.rooms[0]);
+    const spot = (this.opts.photos || []).find(p => p.flat === (this.opts.pos || 1) && near(p) === r);
+    if (spot) {
+      // look from the foot of the bed (or across the room) back towards the head wall, as the photos do
+      const lvd = LV[this.L];
+      const items = lvd.furn.filter(f => /^bed/.test(f.t) && f.flat === spot.flat).map(f => ({ x: f.x, z: f.z, r: f.r, bed: true }))
+        .concat(lvd.fix.filter(f => f.t === 'wc').map(f => ({ x: (f.b[0] + f.b[2]) / 2, z: (f.b[1] + f.b[3]) / 2, r: f.r, bed: false })));
+      const it = items.sort((a, b) => Math.hypot(a.x - spot.x, a.z - spot.z) - Math.hypot(b.x - spot.x, b.z - spot.z))[0];
+      let dx = r.x - spot.x, dz = r.z - spot.z, l = Math.hypot(dx, dz), aim = [spot.x, spot.z], dMax = 3.2;
+      if (it && Math.hypot(it.x - spot.x, it.z - spot.z) < .95) { const o = { 0: [0, 1], 2: [0, -1], 1: [-1, 0], 3: [1, 0] }[it.r]; dx = o[0]; dz = o[1]; l = 1; aim = [it.x, it.z]; if (!it.bed) dMax = 1.9; }
+      if (l < .3) { dx = 1; dz = 0; l = 1; } dx /= l; dz /= l;
+      let best = null;
+      for (const ang of [0, .35, -.35, .7, -.7, 1.0, -1.0, 1.3, -1.3]) { for (let d = dMax; d >= .8; d -= .15) {
+        const ca = Math.cos(ang), sa = Math.sin(ang), ux = dx * ca - dz * sa, uz = dx * sa + dz * ca, qx = aim[0] + ux * d, qz = aim[1] + uz * d;
+        if (this.blocked(qx, qz, .22)) continue;
+        let clear = true; for (let k = .3; k < d - .2; k += .1) if (this.blocked(aim[0] + ux * k, aim[1] + uz * k, 0, true)) { clear = false; break; }
+        if (clear) { best = [qx, qz]; break; }
+      } if (best) break; }
+      if (best) {
+        const [qx, qz] = best, yaw = Math.atan2(-(aim[0] - qx), -(aim[1] - qz)), f = this.fadeEl;
+        const jump = () => { this.pos3.set(qx - CX, this.eyeY, qz - CZ); this.goal = this.pos3.clone(); this.path = null; this.yaw = yaw; this.yawGoal = null; this.pitch = -.22; this.idle = 0; };
+        if (!f) return jump(); f.style.opacity = 1; setTimeout(() => { jump(); f.style.opacity = 0; }, 220); return;
+      }
+    }
     let [px, pz] = this.nearestFree(r.x, r.z);
     const yaw = r.name === 'Hall' ? this.bestYaw(px, pz) : this.viewYaw(px, pz), f = this.fadeEl;
     const bx = Math.sin(yaw), bz = Math.cos(yaw);

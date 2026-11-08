@@ -213,6 +213,9 @@ section{padding-block:64px}
 .v3-core{background:#8A4A2E;color:#fff}
 .v3-flat{background:#fff;color:#2D2236;font-family:var(--f-display);font-size:.95rem;letter-spacing:.03em}
 .v3-room{background:rgba(45,34,54,.82)}
+.v3-photo{pointer-events:auto;cursor:pointer;border:0;display:inline-flex;align-items:center;gap:5px;background:#C9A24D;color:#21180A;font-family:inherit;padding:5px 9px;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.v3-photo svg{width:14px;height:14px;flex:none}
+.v3-photo:hover{background:#E0BC6A}
 .v3-fade{position:absolute;inset:0;background:#000;opacity:0;transition:opacity .2s;pointer-events:none}
 .v3-hint{position:absolute;top:10px;right:10px;font-size:.74rem;color:#2D2236;background:rgba(251,249,252,.88);padding:4px 8px;border-radius:2px;pointer-events:none}
 .v3-badge{position:absolute;top:10px;left:10px;font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;font-weight:700;background:#2D2236;color:#F3EDF5;padding:5px 8px;border-radius:2px;pointer-events:none}
@@ -655,7 +658,7 @@ dialog.lb::backdrop{background:rgba(10,7,12,.92)}
   </div>
 </div>
 
-<div class="notice"><div class="wrap"><b>Draft preview</b><span>Plans, 3D model and walk-through are traced from Fairhurst's structural first-floor plan (401918/OM1, building warrant, March 2026). That drawing is not to scale, so areas are approximate. Photos are of the finished flats. Rents are estimates. Furniture is indicative. Availability updates live.</span></div></div>
+<div class="notice"><div class="wrap"><b>Draft preview</b><span>Plans, 3D model and walk-through are traced from Fairhurst's structural first-floor plan (401918/OM1, building warrant, March 2026). That drawing is not to scale, so areas are approximate. The bedrooms and shower rooms in the 3D use the real finishes, with textures taken from the site photos; tap a gold camera tag in the 3D or walk-through to see the photo. Rents are estimates. Availability updates live.</span></div></div>
 
 <section id="homes">
   <div class="wrap">
@@ -732,7 +735,7 @@ dialog.lb::backdrop{background:rgba(10,7,12,.92)}
   <div class="wrap">
     <div class="sec-head">
       <div><p class="eyebrow">The finish</p><h2>Finished, not imagined</h2></div>
-      <p>These flats are complete. Every photo here was taken on site in September 2026: oak and grey-carpet bedrooms with black cage wall lights, and shower rooms in terrazzo, brushed brass and glass.</p>
+      <p>These flats are complete. Every photo here was taken on site in September 2026, and the same finishes are built into the 3D model and walk-through: oak and grey-carpet bedrooms with black cage wall lights, and shower rooms in terrazzo, patterned tile, brushed brass and glass.</p>
     </div>
     <div class="gal" id="gal"></div>
     <div class="more-row gal-more"><button class="more-btn" type="button" id="gal-more" aria-expanded="false" aria-controls="gal">Show all photos<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button></div>
@@ -1166,6 +1169,10 @@ gal.innerHTML=PHOTOS.map(([f,c],i)=>`<figure data-i="${i}" tabindex="0" role="bu
 const galMore=document.getElementById('gal-more');
 galMore.onclick=()=>{const o=!gal.classList.contains('open');gal.classList.toggle('open',o);galMore.setAttribute('aria-expanded',String(o));galMore.firstChild.textContent=o?'Show fewer photos':`Show all ${PHOTOS.length} photos`;if(!o)document.getElementById('finish').scrollIntoView({behavior:'smooth'})};
 galMore.firstChild.textContent=`Show all ${PHOTOS.length} photos`;
+/* where each photo was taken, for the camera markers inside the 3D model and the walk-through (model metres) */
+const PHOTO_SPOTS=[
+  {flat:1,x:10.55,z:8.2,i:0,label:'Real photos · 4'},{flat:1,x:6.35,z:8.65,i:3,label:'Real photo'},{flat:1,x:10.9,z:5.6,i:10,label:'Real photos · 6'},
+  {flat:2,x:4.08,z:1.7,i:0,label:'Real photos · 4'},{flat:2,x:1.65,z:2.1,i:3,label:'Real photo'},{flat:2,x:1.1,z:5.3,i:10,label:'Real photos · 6'}];
 const lb=document.getElementById('lb'),lbImg=document.getElementById('lb-img'),lbCap=document.getElementById('lb-cap');let lbI=0;
 function lbShow(i){lbI=(i+PHOTOS.length)%PHOTOS.length;const [f,c]=PHOTOS[lbI];lbImg.src=`img/${f}.jpg`;lbImg.alt=c;lbCap.innerHTML=`${c}<small>${lbI+1} / ${PHOTOS.length} · Constitution Street, September 2026</small>`}
 function lbOpen(i){lbShow(i);if(!lb.open)lb.showModal();track('photo',{i})}
@@ -1311,17 +1318,17 @@ function setTab(t){
     else m.appendChild(planSVG(mkSVG(),{pos:u.n,labels:true}));
   }else if(t==='model'){
     const h=document.createElement('div');h.className='v3';m.appendChild(h);const tok=++mountTok;let sy=null;
-    mountLater(h,{mode:'floor',pos:u.n,bg:'#e9e5ec',spin:spinPref,onSpin:on=>sy&&sy(on)},v=>{
+    mountLater(h,{mode:'floor',pos:u.n,bg:'#e9e5ec',spin:spinPref,photos:PHOTO_SPOTS,onPhoto:i=>lbOpen(i),onSpin:on=>sy&&sy(on)},v=>{
       if(!v)return;if(tok!==mountTok){v.dispose();return}viewer=v;
       sy=spinButton(h,()=>viewer);maxButton(h);
-      h.insertAdjacentHTML('beforeend',`<span class="v3-badge">First floor · ${nm(u)} highlighted</span><span class="v3-hint">Drag to turn · pinch or scroll to zoom</span>`);
+      h.insertAdjacentHTML('beforeend',`<span class="v3-badge">First floor · ${nm(u)} highlighted</span><span class="v3-hint">Drag to turn · tap a gold camera tag to see the real room</span>`);
       lightPanel(h,()=>viewer);track('open_3d',{flat:u.label});
     },()=>tok===mountTok);
   }else if(t==='tour'){
     const h=document.createElement('div');h.className='v3';m.appendChild(h);const tok=++mountTok;let sy=null;
-    mountLater(h,{mode:'tour',pos:u.n,spin:spinPref,onSpin:on=>sy&&sy(on)},v=>{
+    mountLater(h,{mode:'tour',pos:u.n,spin:spinPref,photos:PHOTO_SPOTS,onPhoto:i=>lbOpen(i),onSpin:on=>sy&&sy(on)},v=>{
       if(!v)return;if(tok!==mountTok){v.dispose();return}viewer=v;
-      h.insertAdjacentHTML('beforeend',`<span class="v3-badge">Walk-through · ${nm(u)}</span><span class="v3-hint">Drag to look · tap the floor to walk · WASD keys</span>`);
+      h.insertAdjacentHTML('beforeend',`<span class="v3-badge">Walk-through · ${nm(u)}</span><span class="v3-hint">Drag to look · tap the floor to walk · gold tags open real photos</span>`);
       const bar=document.createElement('div');bar.className='v3-rooms';
       const order=viewer.rooms.map((r,i)=>[r,i]).sort((a,b)=>ROOMORDER.indexOf(a[0].name)-ROOMORDER.indexOf(b[0].name));
       order.forEach(([r,i])=>{const b=document.createElement('button');b.type='button';b.textContent=r.name;b.setAttribute('aria-pressed',/^Lounge/.test(r.name)?'true':'false');

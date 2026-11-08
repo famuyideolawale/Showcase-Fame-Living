@@ -10,6 +10,19 @@
     const [z0, z1] = face === 'f' ? FZ : RZ, mat = face === 'f' ? 'granite' : 'rubble', zg = face === 'f' ? z0 + .18 : z1 - .18, out = face === 'f' ? 1 : -1;
     let x = 0;
     wins = wins.slice().sort((p, q) => p[0] - q[0]);
+    if (opt.lining) {   // plastered inner face and window reveals, inside the flats
+      const zi = face === 'f' ? z0 : z1, li = face === 'f' ? [zi - .02, zi] : [zi, zi + .02], rv = face === 'f' ? [zi, zg - .04] : [zg + .04, zi];
+      const L = r => rect(add(P, 'part'), r, y0 + .015, y1 - .3);
+      let lx = .95;
+      wins.forEach(([a, b]) => {
+        if (a > lx) L([lx, li[0], a, li[1]]);
+        rect(add(P, 'part'), [a, li[0], b, li[1]], y0 + .015, y0 + s); rect(add(P, 'part'), [a, li[0], b, li[1]], y0 + h, y1 - .3);
+        rect(add(P, 'part'), [a, rv[0], a + .02, rv[1]], y0 + s, y0 + h); rect(add(P, 'part'), [b - .02, rv[0], b, rv[1]], y0 + s, y0 + h);
+        rect(add(P, 'part'), [a, rv[0], b, rv[1]], y0 + h - .02, y0 + h); rect(add(P, 'white'), [a - .03, rv[0] - .01, b + .03, rv[1]], y0 + s - .03, y0 + s);
+        lx = b;
+      });
+      if (W - .9 > lx) L([lx, li[0], W - .9, li[1]]);
+    }
     wins.forEach(([a, b], i) => {
       if (a > x) rect(add(P, mat), [x, z0, a, z1], y0, y1);
       x = b;
@@ -57,12 +70,14 @@
   }
 
   /* ---------------- the first floor: flats 19A and 19B ---------------- */
+  // shelved alcoves over slatted radiator covers, in the second bedrooms (model metres)
+  const ALCOVES = { 1: [{ r: [5.33, 7.18, 5.66, 7.78], along: false }, { r: [0.69, 0.62, 1.02, 1.22], along: false }] };
   function buildLevel(L, mats, opt) {
     opt = opt || {};
     const lv = LV[L], y = lv.y, top = lv.top, grp = new THREE.Group(); grp.userData.level = L;
     const P = {}, p = k => add(P, k), B = {}, b = k => (B[k] = B[k] || new Boxes());
     storeyShell(P, y, top);
-    facade(P, 'f', y, top, M.frontWin, .72, 2.55); facade(P, 'r', y, top, M.rearWin, .85, 2.45);
+    facade(P, 'f', y, top, M.frontWin, .72, 2.55, { lining: true }); facade(P, 'r', y, top, M.rearWin, .85, 2.45, { lining: true });
     lv.ext.forEach(w => { const c = centroid(w.o); if (c[1] > 1 && c[1] < D - 1 && c[0] > 1 && c[0] < W - 1) p('core').poly(w.o, w.h, y, y + lv.ceil); });   // stair enclosure walls
     lv.part.forEach(w => p('part').poly(w.o, w.h, y, y + lv.ceil));
     (lv.diag || []).forEach(([a, c]) => p('part').quadBox(a, c, .1, y, y + lv.ceil, 0));
@@ -82,16 +97,25 @@
     lv.common.forEach(s => p('stone').poly(s.o, s.h, y + .001, y + .012));
     if (opt.detail !== false) {
       // terrazzo-panelled shower rooms (as finished): wall linings up to the ceiling
-      for (const n in lv.wet) lv.wet[n].forEach(r => {
-        const t = .025, h0 = y + .02, h1 = y + lv.ceil - .02;
-        rect(p('terrazzo'), [r[0], r[1], r[2], r[1] + t], h0, h1); rect(p('terrazzo'), [r[0], r[3] - t, r[2], r[3]], h0, h1);
-        rect(p('terrazzo'), [r[0], r[1], r[0] + t, r[3]], h0, h1); rect(p('terrazzo'), [r[2] - t, r[1], r[2], r[3]], h0, h1);
-      });
+      // only where a wall stands behind the lining, so doorways stay open
+      const walls = lv.ext.concat(lv.part), solid = (x, z) => x < .95 || x > W - .95 || walls.some(w => inPoly(x, z, w.o, w.h));
+      const clampX = r => [Math.max(r[0], .95), r[1], Math.min(r[2], W - .95), r[3]];   // party-wall linings stand 0.95 m in from the gables
+      const lining = (r, side) => {
+        const t = .025, h0 = y + .02, h1 = y + lv.ceil - .02, horiz = side === 0 || side === 2;
+        const a0 = horiz ? r[0] : r[1], a1 = horiz ? r[2] : r[3], st = .1;
+        let run = null;
+        const flush = e => { if (run == null) return; const q = horiz ? (side === 0 ? [run, r[1], e, r[1] + t] : [run, r[3] - t, e, r[3]]) : (side === 3 ? [r[0], run, r[0] + t, e] : [r[2] - t, run, r[2], e]); rect(p('terrazzo'), q, h0, h1); run = null; };
+        for (let a = a0; a < a1 - 1e-6; a += st) {
+          const m = Math.min(a + st / 2, a1), ok = horiz ? solid(m, side === 0 ? r[1] - .06 : r[3] + .06) : solid(side === 3 ? r[0] - .06 : r[2] + .06, m);
+          if (ok && run == null) run = a; if (!ok) flush(a);
+        }
+        flush(a1);
+      };
+      for (const n in lv.wet) lv.wet[n].forEach(r0 => { const r = clampX(r0); [0, 1, 2, 3].forEach(sd => lining(r, sd)); });
       lv.fix.forEach(f => {
-        const [x0, z0, x1, z1] = f.b; const g = { x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0, d: z1 - z0, r: f.r, t: f.t };
+        const sh = f.b[0] < .95 ? .95 - f.b[0] : f.b[2] > W - .95 ? W - .95 - f.b[2] : 0, [x0, z0, x1, z1] = [f.b[0] + sh, f.b[1], f.b[2] + sh, f.b[3]]; const g = { x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0, d: z1 - z0, r: f.r, t: f.t };
         if (f.t === 'sink') { b('steel').rect([g.x - .22, g.z - .18, g.x + .22, g.z + .18], y + .9, y + .915); return; }
-        fixture(g, y, b);
-        if (f.t === 'shower') { const s = sideRect(g, .04); b('steel').rect([s[0], s[1], s[2], s[3]], y + 1.0, y + 1.04); }   // brass rail
+        fixture(g, y, b, lv.ceil);
       });
       (lv.hob || []).forEach(r => b('black').rect([r[0] + .03, r[1] + .03, r[2] - .03, r[3] - .03], y + .9, y + .912));
       lv.kit.forEach(k => {
@@ -100,12 +124,25 @@
         if (wu) b('unit').rect(wu, y + 1.45, y + 2.15);
       });
       lv.tall.forEach(r => b('unit').rect(r, y, y + 2.2));
-      lv.furn.forEach(f => furniture(f, y, b));
-      // black cage wall lights over the beds, as fitted
+      // the two bedrooms are finished differently (site photos): Bedroom 1 an oak storage bed under cage lights,
+      // Bedroom 2 a charcoal frame bed beside a shelved alcove over a slatted radiator cover
+      const bedroomOf = (fl, x, z) => { let best = null, bd = 1e9; lv.rooms.forEach(r => { if (r.flat === fl && /^Bedroom/.test(r.name)) { const d = Math.hypot(r.x - x, r.z - z); if (d < bd) { bd = d; best = r.name; } } }); return best; };
+      lv.furn.forEach(f => { const st = /^bed/.test(f.t) ? (bedroomOf(f.flat, f.x, f.z) === 'Bedroom 2' ? 'frame' : 'oak') : null; furniture(st ? Object.assign({}, f, { style: st }) : f, y, b); });
+      (ALCOVES[L] || []).forEach(a => {
+        b('slatDark').rect(a.r, y, y + .04); for (let k = 0; k < 14; k++) { const t = k / 14, u = a.along ? [a.r[0] + (a.r[2] - a.r[0]) * t, a.r[1], a.r[0] + (a.r[2] - a.r[0]) * (t + .045), a.r[3]] : [a.r[0], a.r[1] + (a.r[3] - a.r[1]) * t, a.r[2], a.r[1] + (a.r[3] - a.r[1]) * (t + .045)]; b('slatDark').rect(u, y + .04, y + .8); }
+        b('white').rect(a.r, y + .8, y + .86); b('white').rect(a.r, y + 2.1, y + 2.2);
+        [1.2, 1.55, 1.85].forEach(h => b('white').rect(a.r, y + h, y + h + .025));
+        const r = a.r; b('white').rect([r[0], r[1] - .04, r[2], r[1]], y, y + 2.2); b('white').rect([r[0], r[3], r[2], r[3] + .04], y, y + 2.2);
+      });
       (lv.lamps || []).forEach(l => {
-        const o = { 0: [0, .1], 2: [0, -.1], 1: [-.1, 0], 3: [.1, 0] }[l.r] || [0, 0];
-        b('iron').rect([l.x - .06 + o[0] * .3, l.z - .06 + o[1] * .3, l.x + .06 + o[0] * .3, l.z + .06 + o[1] * .3], y + 1.42, y + 1.62);
-        const bulb = new THREE.Mesh(new THREE.SphereGeometry(.045, 10, 8), mats.bulb); bulb.position.set(l.x + o[0] * .3 - CX, y + 1.5, l.z + o[1] * .3 - CZ); grp.add(bulb);
+        const o = { 0: [0, 1], 2: [0, -1], 1: [-1, 0], 3: [1, 0] }[l.r] || [0, 0], cage = bedroomOf(l.flat, l.x, l.z) !== 'Bedroom 2';
+        const px = l.x + o[0] * .14 - CX, pz = l.z + o[1] * .14 - CZ, ly = y + (cage ? 1.55 : 1.25);
+        b('iron').rect([l.x + o[0] * .02 - .04, l.z + o[1] * .02 - .04, l.x + o[0] * .02 + .04, l.z + o[1] * .02 + .04], ly - .12, ly - .04);
+        if (cage) {   // black wire cage around an amber filament bulb
+          const c = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.OctahedronGeometry(.075, 0)), new THREE.LineBasicMaterial({ color: 0x111111 }));
+          c.scale.set(1, 1.45, 1); c.position.set(px, ly, pz); grp.add(c);
+          const bulb = new THREE.Mesh(new THREE.SphereGeometry(.035, 10, 8), mats.bulb); bulb.position.set(px, ly - .02, pz); grp.add(bulb);
+        } else b('iron').rect([px + CX - .035, pz + CZ - .035, px + CX + .035, pz + CZ + .035], ly - .1, ly + .02);
       });
     }
     meshAll(P, mats, grp);

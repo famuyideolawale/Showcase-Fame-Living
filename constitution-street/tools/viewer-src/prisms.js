@@ -47,7 +47,7 @@
     if (!this.p.length) return null;
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
-    return new THREE.Mesh(g, mat);
+    addUV(g); return new THREE.Mesh(g, mat);
   };
   function inPoly(x, z, ring, holes) {
     const inside = r => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, zi] = r[i], [xj, zj] = r[j]; if (((zi > z) !== (zj > z)) && (x < (xj - xi) * (z - zi) / (zj - zi) + xi)) c = !c; } return c; };
